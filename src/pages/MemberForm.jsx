@@ -2,6 +2,13 @@ import { useEffect, useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { getMember, createMember, updateMember } from '../lib/members'
 
+// ----------------------------------------------------------------------------
+// 内部フォーム状態
+//   - 文字列の配列フィールド（entitlements / consult_case_ids）は「カンマ区切り」で保持
+//     → submit 時に配列にパースする
+//   - object フィールド（other_names / payment_status / meta）は JSON 文字列で保持
+//     → submit 時に JSON.parse する
+// ----------------------------------------------------------------------------
 const EMPTY_FORM = {
   firebase_uid: '',
   display_name: '',
@@ -10,15 +17,28 @@ const EMPTY_FORM = {
   line_name: '',
   note_name: '',
   other_names: '{}',
-  entitlements: '[]',
+  entitlements: '',          // ← カンマ区切り文字列
   payment_status: '{}',
   utage_common_reader_id: '',
   shr_member_id: '',
   shr_student_id: '',
   note_account: '',
-  consult_case_ids: '[]',
+  consult_case_ids: '',      // ← カンマ区切り文字列
   notes: '',
   meta: '{}',
+}
+
+function parseCommaList(str) {
+  if (!str || !str.trim()) return []
+  return str
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+}
+
+function stringifyCommaList(arr) {
+  if (!Array.isArray(arr)) return ''
+  return arr.join(', ')
 }
 
 export function MemberForm({ mode }) {
@@ -43,13 +63,13 @@ export function MemberForm({ mode }) {
             line_name: data.line_name || '',
             note_name: data.note_name || '',
             other_names: JSON.stringify(data.other_names ?? {}, null, 2),
-            entitlements: JSON.stringify(data.entitlements ?? [], null, 2),
+            entitlements: stringifyCommaList(data.entitlements ?? []),
             payment_status: JSON.stringify(data.payment_status ?? {}, null, 2),
             utage_common_reader_id: data.utage_common_reader_id || '',
             shr_member_id: data.shr_member_id || '',
             shr_student_id: data.shr_student_id || '',
             note_account: data.note_account || '',
-            consult_case_ids: JSON.stringify(data.consult_case_ids ?? [], null, 2),
+            consult_case_ids: stringifyCommaList(data.consult_case_ids ?? []),
             notes: data.notes || '',
             meta: JSON.stringify(data.meta ?? {}, null, 2),
           })
@@ -73,17 +93,26 @@ export function MemberForm({ mode }) {
       return
     }
 
-    // JSON フィールドのパース
-    const jsonFields = ['other_names', 'entitlements', 'payment_status', 'consult_case_ids', 'meta']
+    // object 型 JSON フィールドのパース
+    const objectJsonFields = ['other_names', 'payment_status', 'meta']
     const parsed = {}
-    for (const f of jsonFields) {
+    for (const f of objectJsonFields) {
+      const text = form[f]?.trim() || '{}'
       try {
-        parsed[f] = JSON.parse(form[f] || (f === 'entitlements' || f === 'consult_case_ids' ? '[]' : '{}'))
+        parsed[f] = JSON.parse(text)
       } catch (e) {
-        setError(`${f} の JSON が不正です: ${e.message}`)
+        setError(
+          `${f} の JSON が不正です: ${e.message}\n` +
+          `→ object 型なので {"キー": "値"} の形式で書いてください。値が文字列ならダブルクオートで囲んでください。\n` +
+          `空にしたい場合は {} のままで OK。`
+        )
         return
       }
     }
+
+    // 配列カンマ区切りフィールドのパース（こちらは構文エラーしない）
+    const entitlementsArray = parseCommaList(form.entitlements)
+    const consultCaseIdsArray = parseCommaList(form.consult_case_ids)
 
     const input = {
       firebase_uid: form.firebase_uid,
@@ -93,13 +122,13 @@ export function MemberForm({ mode }) {
       line_name: form.line_name,
       note_name: form.note_name,
       other_names: parsed.other_names,
-      entitlements: parsed.entitlements,
+      entitlements: entitlementsArray,
       payment_status: parsed.payment_status,
       utage_common_reader_id: form.utage_common_reader_id,
       shr_member_id: form.shr_member_id,
       shr_student_id: form.shr_student_id,
       note_account: form.note_account,
-      consult_case_ids: parsed.consult_case_ids,
+      consult_case_ids: consultCaseIdsArray,
       notes: form.notes,
       meta: parsed.meta,
     }
@@ -132,7 +161,8 @@ export function MemberForm({ mode }) {
 
       {error && (
         <div style={errorBoxStyle}>
-          <strong>エラー:</strong> {error}
+          <strong>エラー:</strong>
+          <pre style={errorPreStyle}>{error}</pre>
         </div>
       )}
 
@@ -144,13 +174,31 @@ export function MemberForm({ mode }) {
         <Field label="本名（暗号化保存）" value={form.legal_name} onChange={update('legal_name')} />
         <Field label="LINE 表示名" value={form.line_name} onChange={update('line_name')} />
         <Field label="note 表示名" value={form.note_name} onChange={update('note_name')} />
-        <JsonField label="他プラットフォーム呼称（JSON object）" value={form.other_names} onChange={update('other_names')} />
+        <JsonField
+          label="他プラットフォーム呼称"
+          value={form.other_names}
+          onChange={update('other_names')}
+          placeholder='{"twitter": "@shia2n", "discord": "shia2n#1234"}'
+          hint='object 型・空にする場合は {} のまま'
+        />
       </section>
 
       <section style={sectionStyle}>
         <h3 style={sectionTitleStyle}>Entitlements / 支払い</h3>
-        <JsonField label="entitlements（JSON array）" value={form.entitlements} onChange={update('entitlements')} placeholder='["shiarabo_access", "consult_single"]' />
-        <JsonField label="payment_status（JSON object）" value={form.payment_status} onChange={update('payment_status')} placeholder='{"shiarabo": "active"}' />
+        <CommaListField
+          label="entitlements"
+          value={form.entitlements}
+          onChange={update('entitlements')}
+          placeholder='shiarabo_access, consult_single, ai_30day_workbook_access'
+          hint='カンマ区切りで入力（ダブルクオート不要）'
+        />
+        <JsonField
+          label="payment_status"
+          value={form.payment_status}
+          onChange={update('payment_status')}
+          placeholder='{"shiarabo": "active", "consult": "completed"}'
+          hint='object 型・空にする場合は {} のまま'
+        />
       </section>
 
       <section style={sectionStyle}>
@@ -159,13 +207,25 @@ export function MemberForm({ mode }) {
         <Field label="shr_member_id" value={form.shr_member_id} onChange={update('shr_member_id')} mono />
         <Field label="shr_student_id" value={form.shr_student_id} onChange={update('shr_student_id')} mono />
         <Field label="note_account" value={form.note_account} onChange={update('note_account')} />
-        <JsonField label="consult_case_ids（JSON array）" value={form.consult_case_ids} onChange={update('consult_case_ids')} placeholder='["case_001"]' />
+        <CommaListField
+          label="consult_case_ids"
+          value={form.consult_case_ids}
+          onChange={update('consult_case_ids')}
+          placeholder='case_001, case_002'
+          hint='カンマ区切りで入力（ダブルクオート不要）'
+        />
       </section>
 
       <section style={sectionStyle}>
         <h3 style={sectionTitleStyle}>メモ・メタ</h3>
         <TextAreaField label="notes（暗号化保存・自由記述）" value={form.notes} onChange={update('notes')} />
-        <JsonField label="meta（JSON object・運用メタ情報）" value={form.meta} onChange={update('meta')} />
+        <JsonField
+          label="meta（運用メタ情報）"
+          value={form.meta}
+          onChange={update('meta')}
+          placeholder='{"source": "manual_import", "tags": ["vip"]}'
+          hint='object 型・空にする場合は {} のまま'
+        />
       </section>
 
       <div style={footerActionStyle}>
@@ -212,7 +272,23 @@ function TextAreaField({ label, value, onChange }) {
   )
 }
 
-function JsonField({ label, value, onChange, placeholder }) {
+function CommaListField({ label, value, onChange, placeholder, hint }) {
+  return (
+    <div style={fieldStyle}>
+      <label style={labelStyle}>{label}</label>
+      <input
+        type="text"
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        style={inputStyle}
+      />
+      {hint && <div style={hintStyle}>{hint}</div>}
+    </div>
+  )
+}
+
+function JsonField({ label, value, onChange, placeholder, hint }) {
   return (
     <div style={fieldStyle}>
       <label style={labelStyle}>{label}</label>
@@ -222,6 +298,7 @@ function JsonField({ label, value, onChange, placeholder }) {
         placeholder={placeholder}
         style={{ ...inputStyle, ...monoInputStyle, minHeight: '60px' }}
       />
+      {hint && <div style={hintStyle}>{hint}</div>}
     </div>
   )
 }
@@ -276,6 +353,12 @@ const monoInputStyle = {
   fontSize: '12px',
 }
 
+const hintStyle = {
+  marginTop: '4px',
+  fontSize: '11px',
+  color: '#888',
+}
+
 const footerActionStyle = {
   marginTop: '24px',
   display: 'flex',
@@ -310,4 +393,11 @@ const errorBoxStyle = {
   border: '1px solid #f0c0c0',
   borderRadius: '4px',
   color: '#a00',
+}
+
+const errorPreStyle = {
+  margin: '8px 0 0 0',
+  whiteSpace: 'pre-wrap',
+  fontFamily: 'inherit',
+  fontSize: '13px',
 }
