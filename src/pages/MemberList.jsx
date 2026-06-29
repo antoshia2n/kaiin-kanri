@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { listMembers, deleteMember } from '../lib/members'
+import { supabase } from '../lib/supabase'
 
 export function MemberList() {
   const navigate = useNavigate()
   const [members, setMembers] = useState(null)
   const [error, setError] = useState(null)
 
+  // === Debug 情報 ===
+  const [debugInfo, setDebugInfo] = useState(null)
+
   useEffect(() => {
     load()
+    loadDebug()
   }, [])
 
   const load = async () => {
@@ -21,6 +26,41 @@ export function MemberList() {
     }
   }
 
+  // === Debug：ブラウザ経由の JWT と members 直接 SELECT 結果を取得 ===
+  const loadDebug = async () => {
+    const result = {}
+
+    // 1. whoami（ブラウザ経由で来ている JWT の中身）
+    try {
+      const { data, error } = await supabase.rpc('whoami')
+      result.whoami = error ? { error: error.message } : data
+    } catch (e) {
+      result.whoami = { catch: e.message }
+    }
+
+    // 2. members テーブル直接 count（view を経由しない・RLS のみ評価）
+    try {
+      const { count, error } = await supabase
+        .from('members')
+        .select('*', { count: 'exact', head: true })
+      result.members_direct_count = error ? { error: error.message } : count
+    } catch (e) {
+      result.members_direct_count = { catch: e.message }
+    }
+
+    // 3. members_decrypted view 経由 count
+    try {
+      const { count, error } = await supabase
+        .from('members_decrypted')
+        .select('*', { count: 'exact', head: true })
+      result.members_decrypted_count = error ? { error: error.message } : count
+    } catch (e) {
+      result.members_decrypted_count = { catch: e.message }
+    }
+
+    setDebugInfo(result)
+  }
+
   const handleDelete = async (id, name) => {
     if (!window.confirm(`「${name}」を削除します。よろしいですか？`)) return
     try {
@@ -31,30 +71,34 @@ export function MemberList() {
     }
   }
 
-  if (error) {
-    return (
-      <div style={errorBoxStyle}>
-        <strong>エラー:</strong> {error}
-      </div>
-    )
-  }
-
-  if (members === null) return <p>読み込み中...</p>
-
   return (
     <div>
+      {/* ============ Debug 領域（T1 動作確認後に削除予定）============ */}
+      <div style={debugBoxStyle}>
+        <strong>🔬 Debug 情報</strong>（T1 完了後に削除します）
+        <pre style={debugPreStyle}>
+          {debugInfo ? JSON.stringify(debugInfo, null, 2) : '読み込み中...'}
+        </pre>
+      </div>
+
+      {/* ============ 通常の一覧画面 ============ */}
+      {error && (
+        <div style={errorBoxStyle}>
+          <strong>エラー:</strong> {error}
+        </div>
+      )}
+
       <div style={topBarStyle}>
-        <h2 style={{ margin: 0 }}>会員一覧（{members.length}件）</h2>
-        <button
-          onClick={() => navigate('/members/new')}
-          style={primaryButtonStyle}
-        >
+        <h2 style={{ margin: 0 }}>会員一覧（{members?.length ?? '...'}件）</h2>
+        <button onClick={() => navigate('/members/new')} style={primaryButtonStyle}>
           ＋ 新規追加
         </button>
       </div>
 
-      {members.length === 0 ? (
-        <p style={emptyStyle}>まだ会員が登録されていません。「＋ 新規追加」から1人目を登録してください。</p>
+      {members === null ? (
+        <p>読み込み中...</p>
+      ) : members.length === 0 ? (
+        <p style={emptyStyle}>会員が表示されていません。Debug 情報を Claude に共有してください。</p>
       ) : (
         <table style={tableStyle}>
           <thead>
@@ -84,13 +128,8 @@ export function MemberList() {
                 <td style={tdMutedStyle}>{formatPayment(m.payment_status)}</td>
                 <td style={tdMutedStyle}>{formatDate(m.updated_at)}</td>
                 <td style={tdStyle}>
-                  <Link to={`/members/${m.id}/edit`} style={smallButtonStyle}>
-                    編集
-                  </Link>
-                  <button
-                    onClick={() => handleDelete(m.id, m.display_name)}
-                    style={smallDangerButtonStyle}
-                  >
+                  <Link to={`/members/${m.id}/edit`} style={smallButtonStyle}>編集</Link>
+                  <button onClick={() => handleDelete(m.id, m.display_name)} style={smallDangerButtonStyle}>
                     削除
                   </button>
                 </td>
@@ -114,6 +153,28 @@ function formatDate(iso) {
   if (!iso) return '-'
   const d = new Date(iso)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const debugBoxStyle = {
+  marginBottom: '20px',
+  padding: '14px',
+  background: '#fff8dc',
+  border: '2px dashed #d4a017',
+  borderRadius: '8px',
+  fontSize: '13px',
+}
+
+const debugPreStyle = {
+  marginTop: '8px',
+  marginBottom: 0,
+  whiteSpace: 'pre-wrap',
+  fontFamily: 'ui-monospace, monospace',
+  fontSize: '12px',
+  background: '#fff',
+  padding: '10px',
+  borderRadius: '4px',
+  border: '1px solid #e0d090',
+  overflow: 'auto',
 }
 
 const topBarStyle = {
@@ -141,78 +202,14 @@ const emptyStyle = {
   borderRadius: '8px',
 }
 
-const tableStyle = {
-  width: '100%',
-  borderCollapse: 'collapse',
-}
-
-const tableHeaderRowStyle = {
-  background: '#fafafa',
-}
-
-const thStyle = {
-  padding: '12px 8px',
-  textAlign: 'left',
-  fontSize: '13px',
-  borderBottom: '2px solid #ddd',
-}
-
-const tableRowStyle = {
-  borderBottom: '1px solid #eee',
-}
-
-const tdStyle = {
-  padding: '12px 8px',
-  fontSize: '14px',
-}
-
-const tdMutedStyle = {
-  padding: '12px 8px',
-  fontSize: '13px',
-  color: '#666',
-}
-
-const linkStyle = {
-  color: '#2563eb',
-  textDecoration: 'none',
-}
-
-const badgeStyle = {
-  display: 'inline-block',
-  padding: '2px 8px',
-  background: '#e0e7ff',
-  color: '#3730a3',
-  borderRadius: '12px',
-  fontSize: '12px',
-}
-
-const smallButtonStyle = {
-  display: 'inline-block',
-  padding: '4px 10px',
-  marginRight: '6px',
-  fontSize: '12px',
-  cursor: 'pointer',
-  border: '1px solid #ccc',
-  borderRadius: '4px',
-  background: '#fff',
-  color: '#333',
-  textDecoration: 'none',
-}
-
-const smallDangerButtonStyle = {
-  padding: '4px 10px',
-  fontSize: '12px',
-  cursor: 'pointer',
-  border: '1px solid #dc2626',
-  borderRadius: '4px',
-  background: '#fff',
-  color: '#dc2626',
-}
-
-const errorBoxStyle = {
-  padding: '16px',
-  background: '#fff0f0',
-  border: '1px solid #f0c0c0',
-  borderRadius: '4px',
-  color: '#a00',
-}
+const tableStyle = { width: '100%', borderCollapse: 'collapse' }
+const tableHeaderRowStyle = { background: '#fafafa' }
+const thStyle = { padding: '12px 8px', textAlign: 'left', fontSize: '13px', borderBottom: '2px solid #ddd' }
+const tableRowStyle = { borderBottom: '1px solid #eee' }
+const tdStyle = { padding: '12px 8px', fontSize: '14px' }
+const tdMutedStyle = { padding: '12px 8px', fontSize: '13px', color: '#666' }
+const linkStyle = { color: '#2563eb', textDecoration: 'none' }
+const badgeStyle = { display: 'inline-block', padding: '2px 8px', background: '#e0e7ff', color: '#3730a3', borderRadius: '12px', fontSize: '12px' }
+const smallButtonStyle = { display: 'inline-block', padding: '4px 10px', marginRight: '6px', fontSize: '12px', cursor: 'pointer', border: '1px solid #ccc', borderRadius: '4px', background: '#fff', color: '#333', textDecoration: 'none' }
+const smallDangerButtonStyle = { padding: '4px 10px', fontSize: '12px', cursor: 'pointer', border: '1px solid #dc2626', borderRadius: '4px', background: '#fff', color: '#dc2626' }
+const errorBoxStyle = { padding: '16px', marginBottom: '16px', background: '#fff0f0', border: '1px solid #f0c0c0', borderRadius: '4px', color: '#a00' }
