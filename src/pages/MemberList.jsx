@@ -1,19 +1,27 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { listMembers, deleteMember } from '../lib/members'
+import { listMembers, deleteMember, sha256Hex } from '../lib/members'
 import { supabase } from '../lib/supabase'
+
+const SEARCH_TYPES = [
+  { value: 'all',          label: '全件' },
+  { value: 'display_name', label: '表示名で検索（部分一致）' },
+  { value: 'email',        label: 'email で検索（完全一致）' },
+  { value: 'sor_id',       label: 'SOR ID で検索（完全一致）' },
+]
 
 export function MemberList() {
   const navigate = useNavigate()
   const [members, setMembers] = useState(null)
   const [error, setError] = useState(null)
 
-  // === Debug 情報 ===
-  const [debugInfo, setDebugInfo] = useState(null)
+  // 検索状態
+  const [searchType, setSearchType]   = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searching, setSearching]     = useState(false)
 
   useEffect(() => {
     load()
-    loadDebug()
   }, [])
 
   const load = async () => {
@@ -26,39 +34,61 @@ export function MemberList() {
     }
   }
 
-  // === Debug：ブラウザ経由の JWT と members 直接 SELECT 結果を取得 ===
-  const loadDebug = async () => {
-    const result = {}
-
-    // 1. whoami（ブラウザ経由で来ている JWT の中身）
+  const handleSearch = async () => {
+    setError(null)
+    setSearching(true)
     try {
-      const { data, error } = await supabase.rpc('whoami')
-      result.whoami = error ? { error: error.message } : data
-    } catch (e) {
-      result.whoami = { catch: e.message }
-    }
+      const q = searchQuery.trim()
 
-    // 2. members テーブル直接 count（view を経由しない・RLS のみ評価）
-    try {
-      const { count, error } = await supabase
-        .from('members')
-        .select('*', { count: 'exact', head: true })
-      result.members_direct_count = error ? { error: error.message } : count
-    } catch (e) {
-      result.members_direct_count = { catch: e.message }
-    }
+      // 全件 or 空欄なら通常一覧
+      if (searchType === 'all' || !q) {
+        const data = await listMembers()
+        setMembers(data)
+        return
+      }
 
-    // 3. members_decrypted view 経由 count
-    try {
-      const { count, error } = await supabase
+      let query = supabase
         .from('members_decrypted')
-        .select('*', { count: 'exact', head: true })
-      result.members_decrypted_count = error ? { error: error.message } : count
-    } catch (e) {
-      result.members_decrypted_count = { catch: e.message }
-    }
+        .select('*')
+        .order('created_at', { ascending: false })
 
-    setDebugInfo(result)
+      if (searchType === 'display_name') {
+        query = query.ilike('display_name', `%${q}%`)
+      } else if (searchType === 'email') {
+        const hash = await sha256Hex(q)
+        query = query.eq('email_hash', hash)
+      } else if (searchType === 'sor_id') {
+        query = query.or(
+          [
+            `utage_common_reader_id.eq.${q}`,
+            `shr_member_id.eq.${q}`,
+            `shr_student_id.eq.${q}`,
+            `note_account.eq.${q}`,
+          ].join(',')
+        )
+      }
+
+      const { data, error } = await query
+      if (error) throw error
+      setMembers(data)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  const handleClear = async () => {
+    setSearchType('all')
+    setSearchQuery('')
+    await load()
+  }
+
+  const handleKeyDown = (e) => {
+    // 技術鉄則 §4.3：IME 変換確定 Enter の誤発火を防ぐ
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+      handleSearch()
+    }
   }
 
   const handleDelete = async (id, name) => {
@@ -73,23 +103,46 @@ export function MemberList() {
 
   return (
     <div>
-      {/* ============ Debug 領域（T1 動作確認後に削除予定）============ */}
-      <div style={debugBoxStyle}>
-        <strong>🔬 Debug 情報</strong>（T1 完了後に削除します）
-        <pre style={debugPreStyle}>
-          {debugInfo ? JSON.stringify(debugInfo, null, 2) : '読み込み中...'}
-        </pre>
-      </div>
-
-      {/* ============ 通常の一覧画面 ============ */}
       {error && (
         <div style={errorBoxStyle}>
           <strong>エラー:</strong> {error}
         </div>
       )}
 
+      {/* === 検索バー（T5） === */}
+      <div style={searchBarStyle}>
+        <select
+          value={searchType}
+          onChange={(e) => setSearchType(e.target.value)}
+          style={selectStyle}
+        >
+          {SEARCH_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        <input
+          type="text"
+          placeholder={searchType === 'all' ? '（全件表示中・検索タイプを選んでください）' : '検索ワード'}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={searchType === 'all'}
+          style={searchInputStyle}
+        />
+        <button onClick={handleSearch} style={searchButtonStyle} disabled={searching}>
+          {searching ? '検索中...' : '検索'}
+        </button>
+        <button onClick={handleClear} style={clearButtonStyle} disabled={searching}>
+          クリア
+        </button>
+      </div>
+
       <div style={topBarStyle}>
-        <h2 style={{ margin: 0 }}>会員一覧（{members?.length ?? '...'}件）</h2>
+        <h2 style={{ margin: 0, fontSize: '20px' }}>
+          会員一覧（{members?.length ?? '...'}件）
+        </h2>
         <button onClick={() => navigate('/members/new')} style={primaryButtonStyle}>
           ＋ 新規追加
         </button>
@@ -98,7 +151,11 @@ export function MemberList() {
       {members === null ? (
         <p>読み込み中...</p>
       ) : members.length === 0 ? (
-        <p style={emptyStyle}>会員が表示されていません。Debug 情報を Claude に共有してください。</p>
+        <p style={emptyStyle}>
+          {searchType === 'all'
+            ? 'まだ会員が登録されていません。「＋ 新規追加」から1人目を登録してください。'
+            : '該当する会員が見つかりませんでした。検索条件を変えてください。'}
+        </p>
       ) : (
         <table style={tableStyle}>
           <thead>
@@ -128,8 +185,13 @@ export function MemberList() {
                 <td style={tdMutedStyle}>{formatPayment(m.payment_status)}</td>
                 <td style={tdMutedStyle}>{formatDate(m.updated_at)}</td>
                 <td style={tdStyle}>
-                  <Link to={`/members/${m.id}/edit`} style={smallButtonStyle}>編集</Link>
-                  <button onClick={() => handleDelete(m.id, m.display_name)} style={smallDangerButtonStyle}>
+                  <Link to={`/members/${m.id}/edit`} style={smallButtonStyle}>
+                    編集
+                  </Link>
+                  <button
+                    onClick={() => handleDelete(m.id, m.display_name)}
+                    style={smallDangerButtonStyle}
+                  >
                     削除
                   </button>
                 </td>
@@ -155,33 +217,58 @@ function formatDate(iso) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-const debugBoxStyle = {
+const searchBarStyle = {
+  display: 'flex',
+  gap: '8px',
   marginBottom: '20px',
-  padding: '14px',
-  background: '#fff8dc',
-  border: '2px dashed #d4a017',
+  padding: '12px',
+  background: '#f9fafb',
   borderRadius: '8px',
-  fontSize: '13px',
+  border: '1px solid #eee',
+  flexWrap: 'wrap',
 }
 
-const debugPreStyle = {
-  marginTop: '8px',
-  marginBottom: 0,
-  whiteSpace: 'pre-wrap',
-  fontFamily: 'ui-monospace, monospace',
-  fontSize: '12px',
-  background: '#fff',
-  padding: '10px',
+const selectStyle = {
+  padding: '8px 10px',
+  fontSize: '13px',
+  border: '1px solid #ccc',
   borderRadius: '4px',
-  border: '1px solid #e0d090',
-  overflow: 'auto',
+  background: '#fff',
+}
+
+const searchInputStyle = {
+  flex: 1,
+  minWidth: '180px',
+  padding: '8px 10px',
+  fontSize: '14px',
+  border: '1px solid #ccc',
+  borderRadius: '4px',
+}
+
+const searchButtonStyle = {
+  padding: '8px 16px',
+  fontSize: '13px',
+  cursor: 'pointer',
+  border: '1px solid #2563eb',
+  borderRadius: '4px',
+  background: '#2563eb',
+  color: '#fff',
+}
+
+const clearButtonStyle = {
+  padding: '8px 16px',
+  fontSize: '13px',
+  cursor: 'pointer',
+  border: '1px solid #ccc',
+  borderRadius: '4px',
+  background: '#fff',
 }
 
 const topBarStyle = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  marginBottom: '20px',
+  marginBottom: '16px',
 }
 
 const primaryButtonStyle = {
@@ -209,7 +296,40 @@ const tableRowStyle = { borderBottom: '1px solid #eee' }
 const tdStyle = { padding: '12px 8px', fontSize: '14px' }
 const tdMutedStyle = { padding: '12px 8px', fontSize: '13px', color: '#666' }
 const linkStyle = { color: '#2563eb', textDecoration: 'none' }
-const badgeStyle = { display: 'inline-block', padding: '2px 8px', background: '#e0e7ff', color: '#3730a3', borderRadius: '12px', fontSize: '12px' }
-const smallButtonStyle = { display: 'inline-block', padding: '4px 10px', marginRight: '6px', fontSize: '12px', cursor: 'pointer', border: '1px solid #ccc', borderRadius: '4px', background: '#fff', color: '#333', textDecoration: 'none' }
-const smallDangerButtonStyle = { padding: '4px 10px', fontSize: '12px', cursor: 'pointer', border: '1px solid #dc2626', borderRadius: '4px', background: '#fff', color: '#dc2626' }
-const errorBoxStyle = { padding: '16px', marginBottom: '16px', background: '#fff0f0', border: '1px solid #f0c0c0', borderRadius: '4px', color: '#a00' }
+const badgeStyle = {
+  display: 'inline-block',
+  padding: '2px 8px',
+  background: '#e0e7ff',
+  color: '#3730a3',
+  borderRadius: '12px',
+  fontSize: '12px',
+}
+const smallButtonStyle = {
+  display: 'inline-block',
+  padding: '4px 10px',
+  marginRight: '6px',
+  fontSize: '12px',
+  cursor: 'pointer',
+  border: '1px solid #ccc',
+  borderRadius: '4px',
+  background: '#fff',
+  color: '#333',
+  textDecoration: 'none',
+}
+const smallDangerButtonStyle = {
+  padding: '4px 10px',
+  fontSize: '12px',
+  cursor: 'pointer',
+  border: '1px solid #dc2626',
+  borderRadius: '4px',
+  background: '#fff',
+  color: '#dc2626',
+}
+const errorBoxStyle = {
+  padding: '16px',
+  marginBottom: '16px',
+  background: '#fff0f0',
+  border: '1px solid #f0c0c0',
+  borderRadius: '4px',
+  color: '#a00',
+}
