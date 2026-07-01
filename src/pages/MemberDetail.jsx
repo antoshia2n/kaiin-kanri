@@ -1,6 +1,20 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { getMember, deleteMember, updateEntitlements, listEntitlementLogs } from '../lib/members'
+import { fetchActivePlans, expandPlansToEntitlements, updateMemberPlans } from '../lib/plans'
+
+// ----------------------------------------------------------------------------
+// MemberDetail（T4.5 改修）
+//
+// 追加要素：
+//   - プラン選択セクション（既存 Entitlements 編集セクションの上に配置）
+//   - 「プランから entitlements を展開＆保存」ボタン
+//     → members.plans を updateMemberPlans で保存
+//     → plan_entitlement_matrix に基づき entitlements を展開
+//     → updateEntitlements で entitlements を保存（entitlement_logs 自動記録）
+//   - 都度付与 entitlements（seminar_attendance / alumni / monthly_subscriber 等）は
+//     既存の Entitlements 編集セクションから手動追加する運用
+// ----------------------------------------------------------------------------
 
 export function MemberDetail() {
   const { id } = useParams()
@@ -17,6 +31,14 @@ export function MemberDetail() {
   const [entitlementError, setEntitlementError] = useState(null)
   const [entitlementSuccess, setEntitlementSuccess] = useState(null)
 
+  // === T4.5 プラン選択ステート ===
+  const [allPlans, setAllPlans] = useState([])
+  const [plansLoaded, setPlansLoaded] = useState(false)
+  const [editPlans, setEditPlans] = useState([])
+  const [savingPlanExpansion, setSavingPlanExpansion] = useState(false)
+  const [planError, setPlanError] = useState(null)
+  const [planSuccess, setPlanSuccess] = useState(null)
+
   useEffect(() => {
     load()
   }, [id])
@@ -24,13 +46,17 @@ export function MemberDetail() {
   const load = async () => {
     try {
       setError(null)
-      const [data, logData] = await Promise.all([
+      const [data, logData, plansData] = await Promise.all([
         getMember(id),
         listEntitlementLogs(id).catch(() => []),
+        fetchActivePlans().catch(() => []),
       ])
       setMember(data)
       setLogs(logData)
       setEditEntitlements(Array.isArray(data.entitlements) ? [...data.entitlements] : [])
+      setEditPlans(Array.isArray(data.plans) ? [...data.plans] : [])
+      setAllPlans(plansData)
+      setPlansLoaded(true)
     } catch (e) {
       setError(e.message)
     }
@@ -90,6 +116,60 @@ export function MemberDetail() {
     }
   }
 
+  // T4.5：プランから entitlements を展開して plans と entitlements を保存
+  const handleExpandAndSavePlans = async () => {
+    setPlanError(null)
+    setPlanSuccess(null)
+
+    const originalPlans = Array.isArray(member.plans) ? member.plans : []
+    const plansChanged =
+      originalPlans.length !== editPlans.length ||
+      !originalPlans.every((p) => editPlans.includes(p))
+
+    const expanded = expandPlansToEntitlements(editPlans, allPlans)
+    const originalEntitlements = Array.isArray(member.entitlements) ? member.entitlements : []
+    const entitlementsChanged =
+      originalEntitlements.length !== expanded.length ||
+      !originalEntitlements.every((e) => expanded.includes(e)) ||
+      !expanded.every((e) => originalEntitlements.includes(e))
+
+    if (!plansChanged && !entitlementsChanged) {
+      setPlanError('プラン・entitlements ともに変更がありません')
+      return
+    }
+
+    setSavingPlanExpansion(true)
+    try {
+      // Step 1：plans を更新
+      if (plansChanged) {
+        await updateMemberPlans(id, editPlans)
+      }
+      // Step 2：entitlements を展開結果で置換（entitlement_logs 自動記録）
+      if (entitlementsChanged) {
+        const reason = plansChanged
+          ? `プラン変更: [${editPlans.join(', ') || 'なし'}]`
+          : 'プランから再展開'
+        await updateEntitlements(id, expanded, reason, 'manual')
+      }
+      setPlanSuccess('保存しました（plans 更新 → entitlements 自動展開・履歴記録済み）')
+      await load()
+    } catch (e) {
+      setPlanError(e.message)
+    } finally {
+      setSavingPlanExpansion(false)
+    }
+  }
+
+  const togglePlan = (planName) => {
+    setPlanError(null)
+    setPlanSuccess(null)
+    if (editPlans.includes(planName)) {
+      setEditPlans(editPlans.filter((p) => p !== planName))
+    } else {
+      setEditPlans([...editPlans, planName])
+    }
+  }
+
   const handleDelete = async () => {
     if (!window.confirm(`「${member.display_name}」を削除します。よろしいですか？`)) return
     try {
@@ -118,6 +198,13 @@ export function MemberDetail() {
   const removed = original.filter((t) => !editEntitlements.includes(t))
   const hasChange = added.length > 0 || removed.length > 0
 
+  // T4.5：プラン変更のプレビュー用
+  const originalPlans = Array.isArray(member.plans) ? member.plans : []
+  const plansAdded = editPlans.filter((p) => !originalPlans.includes(p))
+  const plansRemoved = originalPlans.filter((p) => !editPlans.includes(p))
+  const plansChangedPreview = plansAdded.length > 0 || plansRemoved.length > 0
+  const expandedPreview = expandPlansToEntitlements(editPlans, allPlans)
+
   return (
     <div>
       <Link to="/" style={backLinkStyle}>← 一覧へ戻る</Link>
@@ -145,6 +232,95 @@ export function MemberDetail() {
         <Row label="LINE 表示名" value={member.line_name} />
         <Row label="note 表示名" value={member.note_name} />
         <Row label="他プラットフォーム呼称" value={formatJson(member.other_names)} mono small />
+      </section>
+
+      {/* ============ T4.5：プラン選択セクション ============ */}
+      <section style={sectionStyle}>
+        <h3 style={sectionTitleStyle}>プラン（entitlements 自動展開）</h3>
+
+        {!plansLoaded ? (
+          <div style={emptyTagsStyle}>プラン一覧を読み込み中...</div>
+        ) : allPlans.length === 0 ? (
+          <div style={emptyTagsStyle}>
+            plan_entitlement_matrix にプランが登録されていません。マスタ管理画面からプランを追加してください。
+          </div>
+        ) : (
+          <>
+            <div style={planListStyle}>
+              {allPlans.map((p) => {
+                const checked = editPlans.includes(p.plan)
+                const ents = Array.isArray(p.entitlements) ? p.entitlements : []
+                return (
+                  <label
+                    key={p.plan}
+                    style={{
+                      ...planCardStyle,
+                      ...(checked ? planCardCheckedStyle : {}),
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => togglePlan(p.plan)}
+                      style={planCheckboxStyle}
+                    />
+                    <div style={planCardBodyStyle}>
+                      <div style={planNameStyle}>{p.plan}</div>
+                      <div style={planEntitlementsHintStyle}>
+                        → {ents.length === 0 ? '（entitlement 未設定）' : ents.join(', ')}
+                      </div>
+                    </div>
+                  </label>
+                )
+              })}
+            </div>
+
+            {/* プラン変更プレビュー */}
+            {plansChangedPreview && (
+              <div style={planChangePreviewStyle}>
+                <strong>プラン変更予定：</strong>
+                {plansAdded.length > 0 && (
+                  <span style={planAddedSummaryStyle}>＋{plansAdded.join(', ')}</span>
+                )}
+                {plansRemoved.length > 0 && (
+                  <span style={planRemovedSummaryStyle}>−{plansRemoved.join(', ')}</span>
+                )}
+              </div>
+            )}
+
+            {/* 展開後の entitlements プレビュー */}
+            <div style={expandedPreviewStyle}>
+              <div style={expandedPreviewLabelStyle}>
+                プラン展開後の entitlements（{expandedPreview.length} 件）：
+              </div>
+              <div style={expandedPreviewValueStyle}>
+                {expandedPreview.length === 0 ? '（なし）' : expandedPreview.join(', ')}
+              </div>
+              <div style={hintStyle}>
+                ※ 都度付与 entitlements（seminar_attendance / alumni / monthly_subscriber 等）は下の「Entitlements（編集可能）」から手動追加してください。
+              </div>
+            </div>
+
+            {planError && <div style={inlineErrorStyle}>{planError}</div>}
+            {planSuccess && <div style={inlineSuccessStyle}>{planSuccess}</div>}
+
+            <div style={saveBarStyle}>
+              <div style={changeSummaryStyle}>
+                選択中：{editPlans.length === 0 ? '（なし）' : editPlans.join(', ')}
+              </div>
+              <button
+                onClick={handleExpandAndSavePlans}
+                style={{
+                  ...savePrimaryButtonStyle,
+                  ...(savingPlanExpansion ? savePrimaryDisabledStyle : {}),
+                }}
+                disabled={savingPlanExpansion}
+              >
+                {savingPlanExpansion ? '保存中...' : 'プランから entitlements を展開＆保存'}
+              </button>
+            </div>
+          </>
+        )}
       </section>
 
       {/* ============ T2：entitlements 編集セクション ============ */}
@@ -194,7 +370,7 @@ export function MemberDetail() {
             value={newTagInput}
             onChange={(e) => setNewTagInput(e.target.value)}
             onKeyDown={handleTagInputKeyDown}
-            placeholder="entitlement 識別子（例：shiarabo_access）"
+            placeholder="entitlement 識別子（例：shiarabo_basic, seminar_attendance）"
             style={tagInputStyle}
           />
           <button onClick={handleAddTag} style={addTagButtonStyle}>
@@ -591,4 +767,94 @@ const errorBoxStyle = {
   border: '1px solid #f0c0c0',
   borderRadius: '4px',
   color: '#a00',
+}
+
+// === T4.5：プラン選択セクション styles ===
+const planListStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+  gap: '10px',
+  marginBottom: '16px',
+}
+const planCardStyle = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '10px',
+  padding: '12px 14px',
+  background: '#fff',
+  border: '1px solid #e0e0e0',
+  borderRadius: '6px',
+  cursor: 'pointer',
+  transition: 'all 0.15s',
+}
+const planCardCheckedStyle = {
+  background: '#eff6ff',
+  border: '1px solid #2563eb',
+}
+const planCheckboxStyle = {
+  marginTop: '3px',
+  cursor: 'pointer',
+}
+const planCardBodyStyle = { flex: 1, minWidth: 0 }
+const planNameStyle = {
+  fontSize: '14px',
+  fontWeight: 600,
+  color: '#111',
+  marginBottom: '4px',
+}
+const planEntitlementsHintStyle = {
+  fontSize: '11px',
+  color: '#666',
+  fontFamily: 'ui-monospace, monospace',
+  wordBreak: 'break-all',
+}
+
+const planChangePreviewStyle = {
+  padding: '10px 12px',
+  marginBottom: '10px',
+  background: '#fffbeb',
+  border: '1px dashed #f59e0b',
+  borderRadius: '6px',
+  fontSize: '13px',
+  color: '#78350f',
+}
+const planAddedSummaryStyle = {
+  display: 'inline-block',
+  marginLeft: '8px',
+  padding: '2px 8px',
+  background: '#dcfce7',
+  color: '#166534',
+  borderRadius: '10px',
+  fontSize: '12px',
+  fontWeight: 600,
+}
+const planRemovedSummaryStyle = {
+  display: 'inline-block',
+  marginLeft: '8px',
+  padding: '2px 8px',
+  background: '#fee2e2',
+  color: '#991b1b',
+  borderRadius: '10px',
+  fontSize: '12px',
+  fontWeight: 600,
+}
+
+const expandedPreviewStyle = {
+  padding: '10px 12px',
+  marginBottom: '12px',
+  background: '#f9fafb',
+  border: '1px solid #e5e7eb',
+  borderRadius: '6px',
+}
+const expandedPreviewLabelStyle = {
+  fontSize: '12px',
+  fontWeight: 600,
+  color: '#444',
+  marginBottom: '4px',
+}
+const expandedPreviewValueStyle = {
+  fontSize: '12px',
+  fontFamily: 'ui-monospace, monospace',
+  color: '#111',
+  wordBreak: 'break-all',
 }
