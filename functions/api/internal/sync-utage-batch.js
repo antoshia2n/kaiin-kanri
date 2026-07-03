@@ -2,13 +2,30 @@ import { createClient } from '@supabase/supabase-js'
 
 // ============================================================
 // 会員管理くん内部 API：/api/internal/sync-utage-batch
-// Cloudflare Pages Functions（onRequestPost で POST 受け）
-// 呼び出し元：shia2n-mcp Scheduled Handler
+// POST：shia2n-mcp からのバッチ同期（Bearer 認証）
+// GET ：生存確認用（ブラウザで開くとこの JSON が返る）
 // ============================================================
+
+// ------------------------------------------------------------
+// GET：ヘルスチェック（ブラウザ確認用・認証不要・データ非公開）
+// ------------------------------------------------------------
+export async function onRequestGet() {
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      endpoint: '/api/internal/sync-utage-batch',
+      usage: 'POST with Authorization: Bearer <MEMBERS_INTERNAL_SECRET>',
+      note: 'This endpoint is alive. Data sync runs via POST only.',
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } }
+  )
+}
+
+// ------------------------------------------------------------
+// POST：本番バッチ同期
+// ------------------------------------------------------------
 export async function onRequestPost({ request, env }) {
-  // ------------------------------------------------------------
   // Bearer 認証（内部 API 保護）
-  // ------------------------------------------------------------
   const authHeader = request.headers.get('Authorization') || ''
   const expectedToken = `Bearer ${env.MEMBERS_INTERNAL_SECRET}`
   if (authHeader !== expectedToken) {
@@ -18,9 +35,7 @@ export async function onRequestPost({ request, env }) {
     })
   }
 
-  // ------------------------------------------------------------
   // リクエストボディの validation
-  // ------------------------------------------------------------
   let payload
   try {
     payload = await request.json()
@@ -33,11 +48,7 @@ export async function onRequestPost({ request, env }) {
 
   const { utage_account_id, utage_account_name, readers } = payload
 
-  if (
-    !utage_account_id ||
-    !utage_account_name ||
-    !Array.isArray(readers)
-  ) {
+  if (!utage_account_id || !utage_account_name || !Array.isArray(readers)) {
     return new Response(
       JSON.stringify({
         error: 'missing_required_fields',
@@ -47,9 +58,7 @@ export async function onRequestPost({ request, env }) {
     )
   }
 
-  // ------------------------------------------------------------
   // Supabase クライアント（Service Role Key・RLS バイパス）
-  // ------------------------------------------------------------
   const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: {
       autoRefreshToken: false,
@@ -57,9 +66,7 @@ export async function onRequestPost({ request, env }) {
     },
   })
 
-  // ------------------------------------------------------------
   // sync_run_logs に running を INSERT（開始記録）
-  // ------------------------------------------------------------
   const { data: runLog, error: runLogError } = await supabase
     .from('sync_run_logs')
     .insert({
@@ -84,9 +91,7 @@ export async function onRequestPost({ request, env }) {
     )
   }
 
-  // ------------------------------------------------------------
   // バッチ処理を Supabase RPC に委譲（Workers 30 秒制限対策）
-  // ------------------------------------------------------------
   const { data: batchResult, error: batchError } = await supabase.rpc(
     'sync_utage_readers_batch',
     {
@@ -96,9 +101,7 @@ export async function onRequestPost({ request, env }) {
     }
   )
 
-  // ------------------------------------------------------------
   // sync_run_logs 確定（成功 or 失敗）
-  // ------------------------------------------------------------
   if (batchError) {
     await supabase
       .from('sync_run_logs')
@@ -130,9 +133,7 @@ export async function onRequestPost({ request, env }) {
     })
     .eq('id', runLog.id)
 
-  // ------------------------------------------------------------
   // 呼び出し元への応答
-  // ------------------------------------------------------------
   return new Response(
     JSON.stringify({
       ok: true,
