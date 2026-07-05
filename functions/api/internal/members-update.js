@@ -175,6 +175,25 @@ export async function onRequestPost({ request, env }) {
     }
   }
 
+  // 5.5. meta の JSON 文字列 → object 変換
+  //      shia2n-mcp などの MCP tool 経由では meta を JSON 文字列で送る仕様
+  //      （MCP SDK の JSON Schema 変換制約対応）
+  //      直接 API 呼び出し（既に object の場合）はそのまま通す
+  if (typeof updates.meta === 'string') {
+    try {
+      updates.meta = JSON.parse(updates.meta)
+    } catch (_e) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'BAD_REQUEST',
+          message: 'updates.meta must be a valid JSON string or a JSON object',
+        },
+        400
+      )
+    }
+  }
+
   // 6. Supabase クライアント
   const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
