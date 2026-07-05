@@ -152,6 +152,11 @@ function EntitlementEditModal({ initial, onSave, onClose }) {
       setError('entitlement は必須です')
       return
     }
+    // 修正E: 新規時のみ identifier の英スネークケース検証
+    if (!form.id && !/^[a-z][a-z0-9_]*$/.test(form.entitlement.trim())) {
+      setError('entitlement 識別子は英小文字・数字・アンダースコアのみ使用可能です（例：shiarabo_office_hour）')
+      return
+    }
     setSubmitting(true)
     try {
       const target_apps = form.targetAppsText
@@ -190,6 +195,12 @@ function EntitlementEditModal({ initial, onSave, onClose }) {
             style={{ ...inputStyle, ...monoInputStyle }}
             disabled={!!form.id}
           />
+          {/* 修正A: 新規時に警告表示 */}
+          {!form.id && (
+            <div style={warningStyle}>
+              ※ 保存後は変更できません。命名を確認してから保存してください。
+            </div>
+          )}
           {form.id && <div style={hintStyle}>※ entitlement 名は変更不可（運用ルール：リネーム禁止）</div>}
         </div>
 
@@ -212,7 +223,7 @@ function EntitlementEditModal({ initial, onSave, onClose }) {
             style={inputStyle}
           >
             <option value="single">single（単独で有効）</option>
-            <option value="AND">AND（他の entitlement と組み合わせ・Phase 5 以降使用予定）</option>
+            {/* 修正B: AND option は Phase 5 実装時に復活。現時点では SPEC §6.4-9 に従い削除 */}
           </select>
         </div>
 
@@ -227,16 +238,19 @@ function EntitlementEditModal({ initial, onSave, onClose }) {
           />
         </div>
 
-        <div style={fieldStyle}>
-          <label style={checkboxLabelStyle}>
-            <input
-              type="checkbox"
-              checked={form.is_active}
-              onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-            />
-            運用中（外すと廃止マーク）
-          </label>
-        </div>
+        {/* 修正C: 編集時のみチェックボックス表示（新規時は is_active: true 固定） */}
+        {form.id && (
+          <div style={fieldStyle}>
+            <label style={checkboxLabelStyle}>
+              <input
+                type="checkbox"
+                checked={form.is_active}
+                onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+              />
+              運用中（外すと廃止マーク）
+            </label>
+          </div>
+        )}
 
         <div style={modalActionStyle}>
           <button onClick={onClose} style={secondaryButtonStyle} disabled={submitting}>
@@ -360,6 +374,8 @@ const inputStyle = {
 }
 const monoInputStyle = { fontFamily: 'ui-monospace, monospace', fontSize: '12px' }
 const hintStyle = { marginTop: '4px', fontSize: '11px', color: '#888' }
+// 修正A: 新規時の警告用スタイル（赤字・目立つが囲みなし）
+const warningStyle = { marginTop: '4px', fontSize: '12px', color: '#c00', fontWeight: 500 }
 const errorBoxStyle = {
   padding: '12px',
   marginBottom: '12px',
