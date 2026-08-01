@@ -1,22 +1,13 @@
-import { createClient } from '@supabase/supabase-js'
-import { firebaseAuth } from './firebase'
-
-// ----------------------------------------------------------------------------
-// Supabase クライアント
-// ----------------------------------------------------------------------------
-// accessToken オプション（@supabase/supabase-js v2.45+）に async 関数を渡すと、
-// Supabase は全リクエスト前にこの関数を呼び、戻り値を Authorization ヘッダに使う。
-// Firebase の ID token を返すことで、Supabase Third-Party Auth (Firebase) が
-// それを検証し、RLS で auth.jwt() ->> 'sub' に Firebase uid が入る。
-// ----------------------------------------------------------------------------
-export const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-  {
-    accessToken: async () => {
-      const user = firebaseAuth.currentUser
-      if (!user) return null
-      return await user.getIdToken()
-    },
-  }
-)
+// src/lib/supabase.js
+// データベースへの接続口。
+//
+// 【2026-08-01 変更】画面は公開キーでデータベースに直接触らない方針（2026-07-30 決定）に合わせ、
+// 共通パッケージ shia2n-core の接続部品を使う形にした。
+// VITE_DB_GATEWAY（値は /api/db）が設定されているとき、表の読み書きと処理の呼び出しは
+// このアプリ自身のサーバーを経由し、管理者キーはサーバー側にだけ置かれる。
+//
+// 呼び出し側のコード（src/lib/members.js / master.js / plans.js・各画面）は一切変わらない。
+//
+// 共通パッケージの入口（index.js）ではなく接続部品を直接読む。
+// 入口を読むと画面部品（アイコン等）まで引き込まれ、このアプリには不要な依存が増えるため。
+export { supabase } from 'shia2n-core/lib/supabase.js'
