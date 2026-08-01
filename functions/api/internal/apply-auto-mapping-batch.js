@@ -5,10 +5,15 @@
  * Bearer 認証で認可し、Supabase RPC `apply_auto_entitlement_mapping_batch()` を
  * service_role キーで呼び出して結果を返す。
  *
- * 認証：Authorization: Bearer <INTERNAL_API_SECRET>
+ * 【2026-08-01 修正】合言葉の名前が送り手と受け手で食い違っていた。
+ *   送り手（shia2n-mcp / cron-auto-mapping.ts）：MEMBERS_INTERNAL_SECRET を送る
+ *   受け手（このファイル・修正前）              ：INTERNAL_API_SECRET を見ていた
+ * 受け手側が設定されていない名前を見ていたため、この入口は常に 401 を返していた。
+ * 送り手に合わせて MEMBERS_INTERNAL_SECRET を正とし、
+ * 旧名 INTERNAL_API_SECRET が設定されている場合はそれも受け付ける（移行用・後方互換）。
  *
- * Cloudflare Pages Functions 環境変数（既存 sync-utage-batch.js と同じ）：
- *   - INTERNAL_API_SECRET
+ * Cloudflare Pages Functions 環境変数：
+ *   - MEMBERS_INTERNAL_SECRET（sync-utage-batch.js と同じもの）
  *   - SUPABASE_URL
  *   - SUPABASE_SERVICE_ROLE_KEY
  */
@@ -16,10 +21,11 @@
 export async function onRequestPost(context) {
   const { request, env } = context;
 
-  // 1. Bearer 認証
+  // 1. Bearer 認証（合言葉が設定されていない場合は必ず拒否する）
+  const expected = env.MEMBERS_INTERNAL_SECRET || env.INTERNAL_API_SECRET || "";
   const authHeader = request.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/, "");
-  if (!token || token !== env.INTERNAL_API_SECRET) {
+  if (!expected || !token || token !== expected) {
     return jsonResponse({ ok: false, error: "unauthorized" }, 401);
   }
 
@@ -80,7 +86,7 @@ export async function onRequestGet(context) {
       ok: true,
       endpoint: "/api/internal/apply-auto-mapping-batch",
       method: "POST only",
-      auth: "Bearer INTERNAL_API_SECRET",
+      auth: "Bearer MEMBERS_INTERNAL_SECRET",
       description:
         "自動写像適用バッチ実行。Supabase RPC apply_auto_entitlement_mapping_batch() を呼び出す。",
     },

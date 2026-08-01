@@ -35,7 +35,7 @@ export async function onRequestGet(context) {
   // AI から操作する裏側の入口3本。合言葉が入っているかだけを見る。
   const 会員の検索取得更新 = hasDb && Boolean(env.MEMBERS_INTERNAL_TOKEN);
   const UTAGE同期        = hasDb && Boolean(env.MEMBERS_INTERNAL_SECRET);
-  const 自動写像の適用    = hasDb && Boolean(env.INTERNAL_API_SECRET);
+  const 自動写像の適用    = hasDb && Boolean((env.MEMBERS_INTERNAL_SECRET || env.INTERNAL_API_SECRET));
 
   const result = {
     gateway,
