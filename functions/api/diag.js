@@ -16,6 +16,27 @@ const HEADERS = {
   "Cache-Control": "no-store",
 };
 
+const READ_TEST_TABLE = "members";
+
+// ── 読み取り試験（表を1件だけ読んでみる）─────────────────────────────
+// 「つながるか」だけでは、権限が外れて読めない状態を見抜けないため足した。
+// 返すのは結果の言葉だけ。件数・中身・接続先・鍵の断片は一切返さない。
+// 依頼書：3b39c6c1-c439-81e7-b29b-ff494da41481
+async function readTest(url, key) {
+  if (!url || !key) return "確認できず";
+  try {
+    const res = await fetch(`${url}/rest/v1/${READ_TEST_TABLE}?select=id&limit=1`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) return "読めた";
+    if (res.status === 401 || res.status === 403) return "断られた";
+    return "NG";
+  } catch {
+    return "確認できず";
+  }
+}
+
 export async function onRequestGet(context) {
   const { env } = context;
 
@@ -37,8 +58,17 @@ export async function onRequestGet(context) {
   const UTAGE同期        = hasDb && Boolean(env.MEMBERS_INTERNAL_SECRET);
   const 自動写像の適用    = hasDb && Boolean((env.MEMBERS_INTERNAL_SECRET || env.INTERNAL_API_SECRET));
 
+  const url = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
+
+  const [anonRead, serviceRead] = await Promise.all([
+    readTest(url, env.VITE_SUPABASE_ANON_KEY),
+    readTest(url, env.SUPABASE_SERVICE_ROLE_KEY),
+  ]);
+
   const result = {
     gateway,
+    gateway_switch: env.VITE_DB_GATEWAY ? "設定あり" : "未設定",
+    read_test: { anon: anonRead, service_role: serviceRead },
     internal: 会員の検索取得更新 && UTAGE同期 && 自動写像の適用 ? "OK" : "NG",
     internal_detail: {
       members_api:  会員の検索取得更新 ? "設定あり" : "未設定",
