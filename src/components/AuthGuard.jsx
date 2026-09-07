@@ -7,22 +7,66 @@ import {
 } from 'firebase/auth'
 import { firebaseAuth } from '../lib/firebase'
 
-// ----------------------------------------------------------------------------
-// Naoki uid ホワイトリスト（3層防御の最外層）
-// 内側で RLS と audit log が2層目・3層目を担う
-// ----------------------------------------------------------------------------
-const NAOKI_UID = 'VrMwzeSceqWeXVQOrm8kpu4uVR33'
+const DENIAL_REASONS = {
+  no_email: 'no_email',
+  not_found: 'not_found',
+  multiple: 'multiple',
+  lookup_failed: 'lookup_failed',
+}
+
+function denialCode(data) {
+  if (DENIAL_REASONS[data?.reason]) return DENIAL_REASONS[data.reason]
+  if (data?.role && data.role !== 'admin') return `role_${data.role}`
+  return data?.reason || 'lookup_failed'
+}
 
 export function AuthGuard({ children }) {
   const [user, setUser] = useState(null)
+  const [role, setRole] = useState(null)
+  const [denialReason, setDenialReason] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(firebaseAuth, (u) => {
+    let active = true
+
+    const unsub = onAuthStateChanged(firebaseAuth, async (u) => {
+      if (!active) return
+
       setUser(u)
-      setLoading(false)
+      setRole(null)
+      setDenialReason(null)
+
+      if (!u) {
+        setLoading(false)
+        return
+      }
+
+      setLoading(true)
+      try {
+        const token = await u.getIdToken()
+        const res = await fetch('/api/me', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const data = await res.json()
+
+        if (!active) return
+        setRole(data?.role || 'none')
+        if (data?.role !== 'admin') {
+          setDenialReason(denialCode(data))
+        }
+      } catch {
+        if (!active) return
+        setRole('none')
+        setDenialReason('lookup_failed')
+      } finally {
+        if (active) setLoading(false)
+      }
     })
-    return () => unsub()
+
+    return () => {
+      active = false
+      unsub()
+    }
   }, [])
 
   const handleLogin = async () => {
@@ -53,7 +97,7 @@ export function AuthGuard({ children }) {
     return (
       <div style={containerStyle}>
         <h1>会員管理くん</h1>
-        <p>Naoki 専用アプリです</p>
+        <p>管理者専用アプリです</p>
         <button onClick={handleLogin} style={buttonStyle}>
           Google でログイン
         </button>
@@ -61,13 +105,13 @@ export function AuthGuard({ children }) {
     )
   }
 
-  // ---- ログイン済みだが Naoki uid でない ----
-  if (user.uid !== NAOKI_UID) {
+  // ---- ログイン済みだが管理者ではない ----
+  if (role !== 'admin') {
     return (
       <div style={containerStyle}>
         <h1>アクセス権限がありません</h1>
-        <p>このアプリは Naoki 専用です。</p>
-        <p style={mutedStyle}>uid: {user.uid}</p>
+        <p>このアプリは管理者専用です。</p>
+        <p style={mutedStyle}>reason: {denialReason}</p>
         <button onClick={handleLogout} style={buttonStyle}>
           ログアウト
         </button>
@@ -75,7 +119,7 @@ export function AuthGuard({ children }) {
     )
   }
 
-  // ---- Naoki ----
+  // ---- 管理者 ----
   return children
 }
 
