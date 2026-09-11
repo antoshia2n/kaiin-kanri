@@ -95,6 +95,7 @@ export async function onRequestPost({ request, env }) {
   let queryBuilder = supabase.from('members').select(selectCols).limit(effectiveLimit)
 
   const q = query.trim()
+  let sorIdRows = null
 
   if (query_type === 'display_name') {
     // 部分一致（ilike で大文字小文字無視）
@@ -105,7 +106,7 @@ export async function onRequestPost({ request, env }) {
     const emailHash = await sha256Hex(q)
     queryBuilder = queryBuilder.eq('email_hash', emailHash)
   } else if (query_type === 'sor_id') {
-    // 4 カラム OR 完全一致（consult_case_ids は array 型 → contains）
+    // 4 カラム完全一致（consult_case_ids は json の配列 → 手元で含むかを見る）
     // .or() filter 内エスケープ問題防止のため危険文字を弾く
     if (/[,{}()"']/.test(q)) {
       return jsonResponse(
@@ -117,12 +118,41 @@ export async function onRequestPost({ request, env }) {
         400
       )
     }
-    queryBuilder = queryBuilder.or(
-      `shr_member_id.eq.${q},shr_student_id.eq.${q},note_account.eq.${q},consult_case_ids.cs.{${q}}`
-    )
+    // 2026-09-11：consult_case_ids は json の欄で、配列の書き方（{…}）で引くと
+    // 「invalid input syntax for type json」で口ごと 500 で落ちていた。
+    // 3 欄は Postgres で完全一致、consult_case_ids は手元で「含むか」を見る（表は 30 行・10 月に落とす）。
+    const byCols = await supabase
+      .from('members')
+      .select(selectCols)
+      .or(`shr_member_id.eq.${q},shr_student_id.eq.${q},note_account.eq.${q}`)
+      .limit(effectiveLimit)
+    if (byCols.error) {
+      return jsonResponse(
+        { ok: false, error: 'INTERNAL_ERROR', message: byCols.error.message },
+        500
+      )
+    }
+    const withCases = await supabase
+      .from('members')
+      .select(`${selectCols}, consult_case_ids`)
+    if (withCases.error) {
+      return jsonResponse(
+        { ok: false, error: 'INTERNAL_ERROR', message: withCases.error.message },
+        500
+      )
+    }
+    const merged = new Map()
+    for (const row of byCols.data || []) merged.set(row.id, row)
+    for (const row of withCases.data || []) {
+      const ids = Array.isArray(row.consult_case_ids) ? row.consult_case_ids.map(String) : []
+      if (ids.includes(q) && !merged.has(row.id)) merged.set(row.id, row)
+    }
+    sorIdRows = [...merged.values()].slice(0, effectiveLimit)
   }
 
-  const { data, error } = await queryBuilder
+  const { data, error } = sorIdRows
+    ? { data: sorIdRows, error: null }
+    : await queryBuilder
   if (error) {
     return jsonResponse(
       { ok: false, error: 'INTERNAL_ERROR', message: error.message },
