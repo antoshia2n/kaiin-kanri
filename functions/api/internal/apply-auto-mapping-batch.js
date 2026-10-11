@@ -39,7 +39,7 @@ export async function onRequestPost(context) {
       headers: {
         "Content-Type": "application/json",
         apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        ...(/^eyJ/.test(String(env.SUPABASE_SERVICE_ROLE_KEY || "")) ? { Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } : {}),
       },
       body: JSON.stringify({}),
     });
