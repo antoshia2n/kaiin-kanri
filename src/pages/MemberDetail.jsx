@@ -579,7 +579,7 @@ const rowMonoStyle = {
   borderRadius: '4px',
   border: '1px solid #eee',
 }
-const rowSmallStyle = { fontSize: '11px' }
+const rowSmallStyle = { fontSize: '12px' }
 const rowMultilineStyle = { whiteSpace: 'pre-wrap' }
 const rowEmptyStyle = { color: '#707070' }
 
@@ -665,7 +665,7 @@ const addTagButtonStyle = {
   background: '#fff',
   color: '#2563eb',
 }
-const hintStyle = { marginTop: '4px', fontSize: '11px', color: '#666666' }
+const hintStyle = { marginTop: '4px', fontSize: '12px', color: '#666666' }
 
 const reasonRowStyle = { marginTop: '16px' }
 const reasonLabelStyle = { display: 'block', marginBottom: '4px', fontSize: '13px', color: '#444', fontWeight: 500 }
@@ -750,7 +750,7 @@ const actionAddedStyle = {
   background: '#dcfce7',
   color: '#166534',
   borderRadius: '10px',
-  fontSize: '11px',
+  fontSize: '12px',
 }
 const actionRemovedStyle = {
   display: 'inline-block',
@@ -758,7 +758,7 @@ const actionRemovedStyle = {
   background: '#fee2e2',
   color: '#991b1b',
   borderRadius: '10px',
-  fontSize: '11px',
+  fontSize: '12px',
 }
 
 const errorBoxStyle = {
@@ -803,7 +803,7 @@ const planNameStyle = {
   marginBottom: '4px',
 }
 const planEntitlementsHintStyle = {
-  fontSize: '11px',
+  fontSize: '12px',
   color: '#666',
   fontFamily: 'ui-monospace, monospace',
   wordBreak: 'break-all',
