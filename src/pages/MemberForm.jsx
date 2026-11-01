@@ -445,7 +445,7 @@ const monoInputStyle = {
 const hintStyle = {
   marginTop: '4px',
   fontSize: '11px',
-  color: '#888',
+  color: '#666666',
 }
 
 const readOnlyBoxStyle = {
@@ -470,7 +470,7 @@ const readOnlyTagStyle = {
   fontFamily: 'ui-monospace, monospace',
 }
 
-const emptyTextStyle = { color: '#bbb', fontSize: '13px' }
+const emptyTextStyle = { color: '#707070', fontSize: '13px' }
 
 const readOnlyJsonStyle = {
   width: '100%',

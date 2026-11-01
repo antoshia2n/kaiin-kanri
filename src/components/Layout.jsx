@@ -120,5 +120,5 @@ const footerStyle = {
   borderTop: '1px solid #eee',
   textAlign: 'center',
   fontSize: '12px',
-  color: '#888',
+  color: '#666666',
 }

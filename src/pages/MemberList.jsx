@@ -284,7 +284,7 @@ const primaryButtonStyle = {
 const emptyStyle = {
   textAlign: 'center',
   padding: '40px',
-  color: '#888',
+  color: '#666666',
   background: '#fafafa',
   borderRadius: '8px',
 }

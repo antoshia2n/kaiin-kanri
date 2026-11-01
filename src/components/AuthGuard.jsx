@@ -141,7 +141,7 @@ const buttonStyle = {
 }
 
 const mutedStyle = {
-  color: '#888',
+  color: '#666666',
   fontSize: '12px',
   wordBreak: 'break-all',
 }
