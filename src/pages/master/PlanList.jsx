@@ -267,7 +267,7 @@ const tableStyle = { width: '100%', borderCollapse: 'collapse' }
 const tableHeaderRowStyle = { background: '#fafafa' }
 const thStyle = { padding: '12px 8px', textAlign: 'left', fontSize: '13px', borderBottom: '2px solid #ddd' }
 const tableRowStyle = { borderBottom: '1px solid #eee' }
-const rowInactiveStyle = { background: '#fafafa', color: '#999' }
+const rowInactiveStyle = { background: '#fafafa', color: '#707070' }
 const tdStyle = { padding: '12px 8px', fontSize: '14px', verticalAlign: 'top' }
 const tdMonoStyle = { padding: '12px 8px', fontSize: '13px', fontFamily: 'ui-monospace, monospace' }
 const tdMutedStyle = { padding: '12px 8px', fontSize: '13px', color: '#666' }
@@ -281,7 +281,7 @@ const tagStyle = {
   fontSize: '11px',
   fontFamily: 'ui-monospace, monospace',
 }
-const emptyTextStyle = { color: '#bbb', fontSize: '12px' }
+const emptyTextStyle = { color: '#707070', fontSize: '12px' }
 const statusActiveStyle = {
   display: 'inline-block',
   padding: '2px 8px',
@@ -343,7 +343,7 @@ const inputStyle = {
   fontFamily: 'inherit',
 }
 const monoInputStyle = { fontFamily: 'ui-monospace, monospace', fontSize: '12px' }
-const hintStyle = { marginTop: '4px', fontSize: '11px', color: '#888' }
+const hintStyle = { marginTop: '4px', fontSize: '11px', color: '#666666' }
 // 修正A: 新規時の警告用スタイル（赤字・目立つが囲みなし）
 const warningStyle = { marginTop: '4px', fontSize: '12px', color: '#c00', fontWeight: 500 }
 const errorBoxStyle = {

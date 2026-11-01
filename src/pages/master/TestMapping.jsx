@@ -221,7 +221,7 @@ function formatJson(v) {
 }
 
 const subTitleStyle = { margin: '4px 0 16px 0', fontSize: '13px', color: '#666' }
-const hintTextStyle = { fontSize: '12px', color: '#999' }
+const hintTextStyle = { fontSize: '12px', color: '#707070' }
 
 const sectionStyle = {
   marginTop: '20px',
@@ -260,7 +260,7 @@ const rowMonoStyle = {
   whiteSpace: 'pre-wrap',
 }
 const rowSmallStyle = { fontSize: '11px' }
-const rowEmptyStyle = { color: '#bbb' }
+const rowEmptyStyle = { color: '#707070' }
 
 const twoColumnStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }
 const columnStyle = { padding: '12px', background: '#fff', borderRadius: '4px', border: '1px solid #eee' }
@@ -325,7 +325,7 @@ const linkButtonStyle = {
   fontSize: '13px',
 }
 
-const emptyTextStyle = { color: '#bbb', fontSize: '12px' }
+const emptyTextStyle = { color: '#707070', fontSize: '12px' }
 
 const errorBoxStyle = {
   padding: '16px',

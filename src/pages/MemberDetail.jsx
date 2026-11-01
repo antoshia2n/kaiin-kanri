@@ -581,7 +581,7 @@ const rowMonoStyle = {
 }
 const rowSmallStyle = { fontSize: '11px' }
 const rowMultilineStyle = { whiteSpace: 'pre-wrap' }
-const rowEmptyStyle = { color: '#bbb' }
+const rowEmptyStyle = { color: '#707070' }
 
 // entitlements tags
 const tagBoxStyle = {
@@ -595,7 +595,7 @@ const tagBoxStyle = {
   minHeight: '40px',
   alignItems: 'flex-start',
 }
-const emptyTagsStyle = { color: '#999', fontSize: '13px' }
+const emptyTagsStyle = { color: '#707070', fontSize: '13px' }
 const tagStyle = {
   display: 'inline-flex',
   alignItems: 'center',
@@ -665,7 +665,7 @@ const addTagButtonStyle = {
   background: '#fff',
   color: '#2563eb',
 }
-const hintStyle = { marginTop: '4px', fontSize: '11px', color: '#888' }
+const hintStyle = { marginTop: '4px', fontSize: '11px', color: '#666666' }
 
 const reasonRowStyle = { marginTop: '16px' }
 const reasonLabelStyle = { display: 'block', marginBottom: '4px', fontSize: '13px', color: '#444', fontWeight: 500 }
@@ -722,7 +722,7 @@ const removedSummaryStyle = {
   borderRadius: '10px',
   fontSize: '12px',
 }
-const noChangeStyle = { color: '#999' }
+const noChangeStyle = { color: '#707070' }
 const savePrimaryButtonStyle = {
   padding: '8px 20px',
   fontSize: '14px',
