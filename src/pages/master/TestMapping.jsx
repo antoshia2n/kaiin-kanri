@@ -259,7 +259,7 @@ const rowMonoStyle = {
   border: '1px solid #eee',
   whiteSpace: 'pre-wrap',
 }
-const rowSmallStyle = { fontSize: '11px' }
+const rowSmallStyle = { fontSize: '12px' }
 const rowEmptyStyle = { color: '#707070' }
 
 const twoColumnStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }
@@ -313,7 +313,7 @@ const protectNoteStyle = {
   background: '#fef3c7',
   color: '#92400e',
   borderRadius: '4px',
-  fontSize: '11px',
+  fontSize: '12px',
 }
 
 const ctaBoxStyle = { marginTop: '20px', textAlign: 'right' }

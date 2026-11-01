@@ -278,7 +278,7 @@ const tagStyle = {
   background: '#e0e7ff',
   color: '#3730a3',
   borderRadius: '12px',
-  fontSize: '11px',
+  fontSize: '12px',
   fontFamily: 'ui-monospace, monospace',
 }
 const emptyTextStyle = { color: '#707070', fontSize: '12px' }
@@ -288,7 +288,7 @@ const statusActiveStyle = {
   background: '#dcfce7',
   color: '#166534',
   borderRadius: '10px',
-  fontSize: '11px',
+  fontSize: '12px',
 }
 const statusInactiveStyle = {
   display: 'inline-block',
@@ -296,7 +296,7 @@ const statusInactiveStyle = {
   background: '#fee2e2',
   color: '#991b1b',
   borderRadius: '10px',
-  fontSize: '11px',
+  fontSize: '12px',
 }
 const smallButtonStyle = {
   padding: '4px 10px',
@@ -343,7 +343,7 @@ const inputStyle = {
   fontFamily: 'inherit',
 }
 const monoInputStyle = { fontFamily: 'ui-monospace, monospace', fontSize: '12px' }
-const hintStyle = { marginTop: '4px', fontSize: '11px', color: '#666666' }
+const hintStyle = { marginTop: '4px', fontSize: '12px', color: '#666666' }
 // 修正A: 新規時の警告用スタイル（赤字・目立つが囲みなし）
 const warningStyle = { marginTop: '4px', fontSize: '12px', color: '#c00', fontWeight: 500 }
 const errorBoxStyle = {

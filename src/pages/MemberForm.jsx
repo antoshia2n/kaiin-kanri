@@ -444,7 +444,7 @@ const monoInputStyle = {
 
 const hintStyle = {
   marginTop: '4px',
-  fontSize: '11px',
+  fontSize: '12px',
   color: '#666666',
 }
 
